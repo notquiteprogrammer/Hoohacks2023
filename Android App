@@ -1,0 +1,90 @@
+public class CameraActivity extends AppCompatActivity {
+
+    private static final int REQUEST_IMAGE_CAPTURE = 1;
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_camera);
+
+        // Open camera when user taps on the button
+        Button takePictureButton = findViewById(R.id.button_take_picture);
+        takePictureButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                dispatchTakePictureIntent();
+            }
+        });
+    }
+
+    // Start the camera app to take a picture
+    private void dispatchTakePictureIntent() {
+        Intent takePictureIntent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+        if (takePictureIntent.resolveActivity(getPackageManager()) != null) {
+            startActivityForResult(takePictureIntent, REQUEST_IMAGE_CAPTURE);
+        }
+    }
+
+    // Handle the result of taking a picture
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        if (requestCode == REQUEST_IMAGE_CAPTURE && resultCode == RESULT_OK) {
+            // Get the image as a bitmap
+            Bundle extras = data.getExtras();
+            Bitmap imageBitmap = (Bitmap) extras.get("data");
+
+            // Pass the image to the image recognition module
+            ImageRecognitionModule imageRecognitionModule = new ImageRecognitionModule(this);
+            imageRecognitionModule.recognizeImage(imageBitmap);
+        }
+    }
+}
+public class ImageRecognitionModule {
+
+    private static final int INPUT_SIZE = 224;
+    private static final int IMAGE_MEAN = 128;
+    private static final float IMAGE_STD = 128.0f;
+    private static final String MODEL_FILE = "grocery_items.tflite";
+    private static final String LABEL_FILE = "grocery_items.txt";
+
+    private final Context context;
+
+    public ImageRecognitionModule(Context context) {
+        this.context = context;
+    }
+
+    public void recognizeImage(Bitmap bitmap) {
+        try {
+            // Load the TensorFlow Lite model
+            Interpreter.Options options = new Interpreter.Options();
+            Interpreter interpreter = new Interpreter(loadModelFile(), options);
+
+            // Preprocess the image
+            Bitmap resizedBitmap = Bitmap.createScaledBitmap(bitmap, INPUT_SIZE, INPUT_SIZE, false);
+            ByteBuffer byteBuffer = convertBitmapToByteBuffer(resizedBitmap);
+
+            // Run the inference
+            float[][] results = new float[1][getNumLabels()];
+            interpreter.run(byteBuffer, results);
+
+            // Get the top result
+            int maxIndex = getMaxIndex(results[0]);
+            String label = getLabel(maxIndex);
+
+            // Open the expiration date activity
+            Intent expirationDateIntent = new Intent(context, ExpirationDateActivity.class);
+            expirationDateIntent.putExtra("grocery_item_label", label);
+            context.startActivity(expirationDateIntent);
+
+            interpreter.close();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+private MappedByteBuffer loadModelFile() throws IOException {
+        AssetFileDescriptor fileDescriptor = context.getAssets().openFd(MODEL_FILE);
+        FileInputStream inputStream = new FileInputStream(fileDescriptor.getFileDescriptor());
+        FileChannel fileChannel = inputStream.getChannel();
+        long startOffset = fileDescriptor.getStartOffset();
+        long declaredLength = fileDescriptor.getDeclaredLength();
+        return fileChannel.map(FileChannel.MapMode.READ_ONLY, startOffset, declared
